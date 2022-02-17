@@ -104,9 +104,9 @@ fn generate_image(fname: &str, palette: &Vec<Label>, pw: u32, ph: u32, dw: u32, 
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
-    let mut fname = "test.tiff";
+    let mut fname = "test.jpg";
     let mut pname = "emoji";
-    let mut fsize = 128;
+    let mut fsize = 64;
     let mut psize = 72;
     for e in args.iter() {
         if e == "-p" {  pname = e;  }
