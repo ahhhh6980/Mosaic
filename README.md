@@ -19,4 +19,4 @@ Find a collection of images and put them in a named folder under palettes/
 The name of the folder is the palette name
 
 I recommend the 3500+ emojis available from here: https://twemoji.twitter.com/
-![](output/test_p72_f64.jpg)
+![](https://ninja.dog/3SVRMe.jpg)
