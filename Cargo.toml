@@ -1,0 +1,13 @@
+[package]
+name = "mosaic"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+glob = "0.3.0"
+image = "0.24.0"
+ndarray = "0.15.4"
+rayon = "1.5.1"
+thread = "0.1.0"
