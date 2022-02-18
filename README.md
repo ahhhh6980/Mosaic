@@ -4,11 +4,8 @@
 
 
 command line args:
-`./mosaic -f test.png -p emoji -fs 128 -ps 64
-Specify *file.png* scaled to 128x128, using the palette "emoji" scaled to 64x64
-
-image size determines that scale that it processes the image
-palette size specifies what size the palette images are
+`./mosaic -f test.png -p emoji -fs 128 -ps 64`
+- Specify *file.png* scaled to 128x128, using the palette "emoji" scaled to 64x64[^1][^2]
 
 Pass in the extension for the file name!
 
@@ -22,5 +19,6 @@ Pass in the extension for the file name!
 3 **Put named folder under palettes/**
 - The name of the folder is the palette name
 
-
 ![](https://ninja.dog/3SVRMe.jpg)
+[^1]: image size determines that scale that it processes the image
+[^2]: palette size specifies what size the palette images are
