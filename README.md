@@ -1,22 +1,26 @@
 # Mosaic
-Convert images into a mosaic of a subset of images!
+*To compile:* `cargo build --release`
+## Convert images into a mosaic of a subset of images!
 
-To compile: 
-	cargo build --release
+
 command line args:
--p: palette name
--f: file name
--fs: image size
--ps: palette size
+`./mosaic -f test.png -p emoji -fs 128 -ps 64
+Specify *file.png* scaled to 128x128, using the palette "emoji" scaled to 64x64
 
 image size determines that scale that it processes the image
 palette size specifies what size the palette images are
 
 Pass in the extension for the file name!
 
-What to do?
-Find a collection of images and put them in a named folder under palettes/
-The name of the folder is the palette name
+# How Do You Use Other Images?
+1 **Find a collection of images**
+- I recommend the 3500+ emojis available from here: https://twemoji.twitter.com/
 
-I recommend the 3500+ emojis available from here: https://twemoji.twitter.com/
+2 **Put the images into a named folder**
+- In this repo, packaged for convenience, the mentioned collection is named emojis/
+
+3 **Put named folder under palettes/**
+- The name of the folder is the palette name
+
+
 ![](https://ninja.dog/3SVRMe.jpg)
