@@ -9,7 +9,7 @@ command line args:
 
 Pass in the extension for the file name!
 
-# How Do You Use Other Images?
+## How Do You Use Other Images?
 1 **Find a collection of images**
 - I recommend the 3500+ emojis available from here: https://twemoji.twitter.com/
 
