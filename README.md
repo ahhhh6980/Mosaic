@@ -31,5 +31,5 @@ Pass in the extension for the file name!
 - The name of the folder is the palette name
 
 ![](https://ninja.dog/3SVRMe.jpg)
-[^1]: image size determines that scale that it processes the image
+[^1]: image size determines what size the input will be changed to
 [^2]: palette size specifies what size the palette images are
