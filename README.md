@@ -1,5 +1,7 @@
 # Mosaic
 
+![](output/Landscape-Color:emoji_p16_f256.jpg)
+
 Let's say you have a collection of images, and you want to put them together in a way that resembles any image you'd like.
 What this program does, is take as input, a folder of images (out palette), and an input image (what we are trying to recreate).
 
@@ -32,6 +34,5 @@ Pass in the extension for the file name!
 3 **Put named folder under palettes/**
 - The name of the folder is the palette name
 
-![](https://ninja.dog/3SVRMe.jpg)
 [^1]: image size determines what size the input will be changed to
 [^2]: palette size specifies what size the palette images are
