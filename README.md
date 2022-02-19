@@ -9,9 +9,10 @@ Using this information, we can construct the mosaic by taking the pixels from it
 
 This can work with any set of images, it doesn't have to be emojis.
 
-*To compile:* `cargo build --release`
-## Convert images into a mosaic of a subset of images!
+## To compile:
+`cargo build --release`
 
+## To use:
 
 command line args:
 `./mosaic -f test.png -p emoji -fs 128 -ps 64`
