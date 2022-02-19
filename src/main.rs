@@ -18,15 +18,22 @@
 use std::{path::Path, fs::read_dir, env, cmp::max};
 use image::{ImageBuffer, Rgba, imageops::FilterType::Lanczos3};
 use glob::glob;
-use ndarray::{Array1};
+use ndarray::{Array1, Array3};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::time::{Instant};
 
 #[derive(Debug, Clone)]
-struct Label {
+struct LabelPixel {
     color: Array1<f32>,
-    image: ImageBuffer<Rgba<u8>, Vec<u8>>
+    image: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    count: u64,
+    id: usize
 }
+// #[derive(Debug, Clone)]
+// struct LabelMosaic {
+//     color: Array3<f32>,
+//     image: ImageBuffer<Rgba<u8>, Vec<u8>>,
+// }
 
 fn compute_average_color(img: &ImageBuffer<Rgba<u8>, Vec<u8>>, w: usize, h: usize) -> Array1<f32> {
     let mut avg = [0f32;4];
@@ -35,7 +42,7 @@ fn compute_average_color(img: &ImageBuffer<Rgba<u8>, Vec<u8>>, w: usize, h: usiz
     Array1::from(avg.to_vec())
 }
 
-fn bad_color_distance(pixel_a: &Array1<f32>, pixel_b: &Array1<f32>) -> u64 {
+fn bad_color_distance(pixel_a: &Array1<f32>, pixel_b: &Array1<f32>, q: u64, qfactor: f32) -> u64 {
     let c1 = pixel_a / 256.0;
     let c2 = pixel_b / 256.0;
     let dc = &c2 - &c1;
@@ -43,12 +50,18 @@ fn bad_color_distance(pixel_a: &Array1<f32>, pixel_b: &Array1<f32>) -> u64 {
     let dr = (2.0 + (r / 256.0)) * dc[0] * dc[0];
     let dg = 4.0 * dc[1] * dc[1];
     let db = (2.0 + ((255.0 - r) / 256.0)) * dc[2] * dc[2];
-    ((dr + dg + db) * 1024.0) as u64
+    if qfactor > 0.0 {
+        ((dr + dg + db) * 1024.0 + ((q as f32) / qfactor)) as u64
+    }
+    else {
+        ((dr + dg + db) * 1024.0) as u64
+    }
 }
 
-fn find_closest_image(pixel: &Array1<f32>, palette: &Vec<Label>) -> (ImageBuffer<Rgba<u8>, Vec<u8>>, Array1<f32>) {
-    let label = palette.par_iter().min_by_key(|x| bad_color_distance(&pixel, &x.color)).unwrap();
-    (label.image.clone(), label.color.clone())
+fn find_closest_image(pixel: &Array1<f32>, palette: &Vec<LabelPixel>, qfactor: f32) -> (ImageBuffer<Rgba<u8>, Vec<u8>>, Array1<f32>, usize) {
+    //let label = palette.par_iter().min_by_key(|x| bad_color_distance(&pixel, &x.color, &x.count)).unwrap();
+    let label = palette.par_iter().min_by_key(|x| bad_color_distance(&pixel, &x.color, x.count, qfactor)).unwrap();
+    (label.image.clone(), label.color.clone(), label.id.clone())
 }
 
 fn get_palette_dimensions(pname: &str) -> (usize, usize) {
@@ -70,15 +83,15 @@ fn resize_dims((mut w, mut h): (usize, usize), max_size: u32) -> (usize, usize) 
     (w, h)
 }
 
-fn generate_palette(pname: &str, max_size: u32) -> Vec<Label> {
+fn generate_pixel_palette(pname: &str, max_size: u32) -> Vec<LabelPixel> {
     let (pw, ph) = resize_dims(get_palette_dimensions(&pname), max_size);
 
     let palette_path = format!("palettes/{}", pname);
-    let mut palette: Vec<Label> = vec![Label{color: Array1::<f32>::zeros(4), image: ImageBuffer::<Rgba<u8>, Vec<u8>>::new(1, 1)};1];
+    let mut palette: Vec<LabelPixel> = vec![LabelPixel{color: Array1::<f32>::zeros(4), image: ImageBuffer::<Rgba<u8>, Vec<u8>>::new(1, 1), count: 0, id: 0};1];
     if Path::new(&palette_path).is_dir() {
     
         let set_count: usize = read_dir(&palette_path).unwrap().count() as usize;
-        palette = vec![Label{color: Array1::<f32>::zeros(4), image: ImageBuffer::<Rgba<u8>, Vec<u8>>::new(pw as u32, ph as u32)};set_count];
+        palette = vec![LabelPixel{color: Array1::<f32>::zeros(4), image: ImageBuffer::<Rgba<u8>, Vec<u8>>::new(pw as u32, ph as u32), count: 0, id: 0};set_count];
 
         let images_paths = format!("{}/*", &palette_path);
         for (i, item) in glob(&images_paths).expect("Error").enumerate() {
@@ -86,12 +99,13 @@ fn generate_palette(pname: &str, max_size: u32) -> Vec<Label> {
             let image = image::open(&item_name).unwrap().resize(pw as u32, ph as u32, Lanczos3).into_rgba8();
             palette[i].color = compute_average_color(&image, pw, ph);
             palette[i].image = image;
+            palette[i].id = i;
         }
     }
     palette
 }
 
-fn generate_image(fname: &str, pname: &str, palette: &Vec<Label>, pmax: u32, imax: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+fn generate_image_pixel_mode(fname: &str, pname: &str, palette: &mut Vec<LabelPixel>, pmax: u32, imax: u32, qfactor: f32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let image_path = format!("input/{}", fname);
     let mut output = ImageBuffer::<Rgba<u8>, Vec<u8>>::new(1,1);
     if Path::new(&image_path).is_file() {
@@ -105,7 +119,8 @@ fn generate_image(fname: &str, pname: &str, palette: &Vec<Label>, pmax: u32, ima
                 let temp = (image[(x as u32,y as u32)].0).to_vec();
                 let pixel: Vec<f32> = temp.iter().map(|v| *v as f32).collect();
                 let pixel = Array1::<f32>::from(pixel);
-                let (pimage, pcolor) = find_closest_image(&pixel, &palette);
+                let (pimage, pcolor, pid) = find_closest_image(&pixel, palette, qfactor);
+                palette[pid].count += 1;
                 for oy in 0..ph {
                     for ox in 0..pw {
                         let mut ppixel = pimage[(ox as u32,oy as u32)];
@@ -131,18 +146,26 @@ fn main() -> std::io::Result<()> {
     let mut pname = "emoji";
     let mut fsize = 256;
     let mut psize = 16;
+    let mut pixel_mode = true;
+    let mut qfactor = 64.0;
     for e in args.iter() {
         if e == "-p" {  pname = e;  }
         if e == "-f" {  fname = e;  }
+        if e == "-v" {    qfactor = e.parse::<f32>().unwrap()     }
         if e == "-fs"{  fsize = e.parse::<u32>().unwrap();   }
         if e == "-ps"{  psize = e.parse::<u32>().unwrap();   }
+        if e == "--mosaic" {    pixel_mode = false;     }
     }
     println!("Processing: {}, with palette: {}, at img size: {}, and palette size: {}", &fname, &pname, &fsize, &psize);
     let now = Instant::now();
-    let palette = generate_palette(pname, psize);
-    let image = generate_image(fname, pname, &palette, psize, fsize);
-    let save_name = format!("output/{}:{}_p{}_f{}.{}", fname.split(".").collect::<Vec<&str>>()[0], pname, psize, fsize, fname.split(".").collect::<Vec<&str>>()[1]);
-    image.save(save_name).expect("Error");
+    if pixel_mode {
+        let mut palette = generate_pixel_palette(pname, psize);
+        let image = generate_image_pixel_mode(fname, pname, &mut palette, psize, fsize, qfactor);
+        let save_name = format!("output/{}:{}_p{}_f{}_v{:e}.{}", fname.split(".").collect::<Vec<&str>>()[0], pname, psize, fsize, qfactor, fname.split(".").collect::<Vec<&str>>()[1]);
+        image.save(save_name).expect("Error");
+    } else {
+        // let palette = generate_mosaic_palette(pname, psize);
+    }
     println!("Finished in: {}ms", now.elapsed().as_millis());
     Ok(())
 }

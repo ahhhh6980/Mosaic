@@ -21,8 +21,8 @@ This can work with any set of images, it doesn't have to be emojis.
 ***It is important to know that this currently only takes in square images for both the input and the palette***
 
 command line args:
-`./mosaic -f test.png -p emoji -fs 128 -ps 64`
-- Specify *file.png* scaled to 128x128, using the palette "emoji" scaled to 64x64[^1][^2]
+`./mosaic -f Landscape-Color.png -p emoji -fs 256 -ps 16 -v 64.0`
+- Specify *file.png* scaled to a max size of 256, using the palette "emoji" scaled to 16x16, with a "variance" of 1/64[^1][^2]
 
 Pass in the extension for the file name!
 
