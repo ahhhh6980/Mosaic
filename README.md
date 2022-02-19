@@ -1,7 +1,5 @@
 # Mosaic
 
-![](output/Landscape-Color:emoji_p16_f256.jpg)
-
 Let's say you have a collection of images, and you want to put them together in a way that resembles any image you'd like.
 What this program does, is take as input, a folder of images (out palette), and an input image (what we are trying to recreate).
 
@@ -10,6 +8,8 @@ After this process, we can then go through every pixel in our image, and figure 
 Using this information, we can construct the mosaic by taking the pixels from items in our palette and writing them to a new image.
 
 This can work with any set of images, it doesn't have to be emojis.
+
+![](output/Landscape-Color:emoji_p16_f256.jpg)
 
 ## To compile:
 `cargo build --release`
