@@ -1,5 +1,7 @@
 # Mosaic
 
+This currently only operates on mapping individual pixels, I am working on writing this such that it maps multiple pixels to a single palette item, which is a work in progress.
+
 Let's say you have a collection of images, and you want to put them together in a way that resembles any image you'd like.
 What this program does, is take as input, a folder of images (out palette), and an input image (what we are trying to recreate).
 
