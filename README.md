@@ -1,4 +1,14 @@
 # Mosaic
+
+Let's say you have a collection of images, and you want to put them together in a way that resembles any image you'd like.
+What this program does, is take as input, a folder of images (out palette), and an input image (what we are trying to recreate).
+
+This basically goes through every item (image) in the palette and finds the average color for each item in the palette.
+After this process, we can then go through every pixel in our image, and figure out which item from our palette msot resembles our pixel.
+Using this information, we can construct the mosaic by taking the pixels from items in our palette and writing them to a new image.
+
+This can work with any set of images, it doesn't have to be emojis.
+
 *To compile:* `cargo build --release`
 ## Convert images into a mosaic of a subset of images!
 
