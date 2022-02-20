@@ -17,8 +17,9 @@
 
 use glob::glob;
 use image::{imageops::FilterType::Lanczos3, ImageBuffer, Rgba};
-use ndarray::{Array1, Array3};
+use ndarray::Array1;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use std::path::PathBuf;
 use std::time::Instant;
 use std::{cmp::max, env, fs::read_dir, path::Path};
 
@@ -29,11 +30,11 @@ struct Label {
     count: u64,
     id: usize,
 }
-#[derive(Debug, Clone)]
-struct LabelMosaic {
-    color: Array3<f32>,
-    image: ImageBuffer<Rgba<u8>, Vec<u8>>,
-}
+// #[derive(Debug, Clone)]
+// struct LabelMosaic {
+//     color: Array3<f32>,
+//     image: ImageBuffer<Rgba<u8>, Vec<u8>>,
+// }
 
 fn compute_average_color(img: &ImageBuffer<Rgba<u8>, Vec<u8>>, w: usize, h: usize) -> Array1<f32> {
     let mut avg = [0f32; 4];
@@ -179,8 +180,8 @@ fn generate_image_pixel_mode(
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
-    let mut fname = "Landscape-Color.jpg";
-    let mut pname = "emoji";
+    let mut fname = "";
+    let mut pname = "";
     let mut fsize = 256;
     let mut psize = 16;
     let pixel_mode = true;
@@ -199,10 +200,79 @@ fn main() -> std::io::Result<()> {
             _ => {}
         }
     }
+    // If you know how to make this better, please do
+    // I tried writing a function to encapsulate the behavior of this but I ran into too many problems
+    // and I do not know enough about rust to know how to properly write it, and rust analyzer was way too vague :(
+    let mut file_chosen: PathBuf;
+    while fname == "" {
+        let input_paths = "input/*";
+        let images = glob(&input_paths).unwrap();
+        println!("Please enter the number of the image you'd like to process:");
+        for (i, e) in images.enumerate() {
+            println!(
+                "{}: {}",
+                i,
+                e.unwrap().to_str().expect("Invalid Image Name")
+            );
+        }
+        let mut string = String::from("");
+        std::io::stdin().read_line(&mut string).unwrap();
+        let line = string.trim();
+        if line.chars().all(char::is_numeric) {
+            let p: u32 = line.parse().unwrap();
+            file_chosen = glob(&input_paths)
+                .unwrap()
+                .nth(p as usize)
+                .unwrap()
+                .unwrap();
+            fname = file_chosen
+                .to_str()
+                .unwrap()
+                .split('/')
+                .collect::<Vec<&str>>()[1];
+            println!("You Chose: {}", fname);
+        }
+    }
+    println!();
+    // If you know how to make this better, please do
+    // I tried writing a function to encapsulate the behavior of this but I ran into too many problems
+    // and I do not know enough about rust to know how to properly write it, and rust analyzer was way too vague :(
+    let mut file_chosen: PathBuf;
+    while pname == "" {
+        let input_paths = "palettes/*";
+        let images = glob(&input_paths).unwrap();
+        println!("Please enter the number of the image you'd like to process:");
+        for (i, e) in images.enumerate() {
+            println!(
+                "{}: {}",
+                i,
+                e.unwrap().to_str().expect("Invalid Image Name")
+            );
+        }
+        let mut string = String::from("");
+        std::io::stdin().read_line(&mut string).unwrap();
+        let line = string.trim();
+        if line.chars().all(char::is_numeric) {
+            let p: u32 = line.parse().unwrap();
+            file_chosen = glob(&input_paths)
+                .unwrap()
+                .nth(p as usize)
+                .unwrap()
+                .unwrap();
+            pname = file_chosen
+                .to_str()
+                .unwrap()
+                .split('/')
+                .collect::<Vec<&str>>()[1];
+            println!("You Chose: {}", fname);
+        }
+    }
+    println!();
     println!(
         "Processing: {}, with palette: {}, at img size: {}, and palette size: {}",
         &fname, &pname, &fsize, &psize
     );
+    println!();
     let now = Instant::now();
     if pixel_mode {
         let mut palette = generate_pixel_palette(pname, psize);
