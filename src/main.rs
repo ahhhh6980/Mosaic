@@ -23,7 +23,7 @@ use std::time::Instant;
 use std::{cmp::max, env, fs::read_dir, path::Path};
 
 #[derive(Debug, Clone)]
-struct LabelPixel {
+struct Label {
     color: Array1<f32>,
     image: ImageBuffer<Rgba<u8>, Vec<u8>>,
     count: u64,
@@ -63,7 +63,7 @@ fn bad_color_distance(pixel_a: &Array1<f32>, pixel_b: &Array1<f32>, q: u64, qfac
 
 fn find_closest_image(
     pixel: &Array1<f32>,
-    palette: &Vec<LabelPixel>,
+    palette: &Vec<Label>,
     qfactor: f32,
 ) -> (ImageBuffer<Rgba<u8>, Vec<u8>>, Array1<f32>, usize) {
     //let label = palette.par_iter().min_by_key(|x| bad_color_distance(&pixel, &x.color, &x.count)).unwrap();
@@ -95,12 +95,12 @@ fn resize_dims((mut w, mut h): (usize, usize), max_size: u32) -> (usize, usize) 
     (w, h)
 }
 
-fn generate_pixel_palette(pname: &str, max_size: u32) -> Vec<LabelPixel> {
+fn generate_pixel_palette(pname: &str, max_size: u32) -> Vec<Label> {
     let (pw, ph) = resize_dims(get_palette_dimensions(&pname), max_size);
 
     let palette_path = format!("palettes/{}", pname);
-    let mut palette: Vec<LabelPixel> = vec![
-        LabelPixel {
+    let mut palette: Vec<Label> = vec![
+        Label {
             color: Array1::<f32>::zeros(4),
             image: ImageBuffer::<Rgba<u8>, Vec<u8>>::new(1, 1),
             count: 0,
@@ -111,7 +111,7 @@ fn generate_pixel_palette(pname: &str, max_size: u32) -> Vec<LabelPixel> {
     if Path::new(&palette_path).is_dir() {
         let set_count: usize = read_dir(&palette_path).unwrap().count() as usize;
         palette = vec![
-            LabelPixel {
+            Label {
                 color: Array1::<f32>::zeros(4),
                 image: ImageBuffer::<Rgba<u8>, Vec<u8>>::new(pw as u32, ph as u32),
                 count: 0,
@@ -138,7 +138,7 @@ fn generate_pixel_palette(pname: &str, max_size: u32) -> Vec<LabelPixel> {
 fn generate_image_pixel_mode(
     fname: &str,
     pname: &str,
-    palette: &mut Vec<LabelPixel>,
+    palette: &mut Vec<Label>,
     pmax: u32,
     imax: u32,
     qfactor: f32,
@@ -187,7 +187,7 @@ fn main() -> std::io::Result<()> {
     let mut qfactor = 64.0;
     let mut arg: &str = "";
     for (i, e) in args.iter().enumerate() {
-        if i < args.len()-1 {
+        if i < args.len() - 1 {
             arg = Box::leak(args[i + 1].clone().into_boxed_str());
         }
         match e.as_str() {
@@ -208,7 +208,7 @@ fn main() -> std::io::Result<()> {
         let mut palette = generate_pixel_palette(pname, psize);
         let image = generate_image_pixel_mode(fname, pname, &mut palette, psize, fsize, qfactor);
         let save_name = format!(
-            "output/{}:{}_p{}_f{}_v{:e}.{}",
+            "output/{}-{}_p{}_f{}_v{:e}.{}",
             fname.split(".").collect::<Vec<&str>>()[0],
             pname,
             psize,
