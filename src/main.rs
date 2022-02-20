@@ -178,10 +178,39 @@ fn generate_image_pixel_mode(
     output
 }
 
+fn input_assign(dir: &str) -> String {
+    let mut var = String::from("");
+    while var == String::from("") {
+        let input_paths = format!("{}/*", dir);
+        let images = glob(&input_paths).unwrap();
+        println!("Please enter the number of the image you'd like to process:");
+        for (i, e) in images.enumerate() {
+            println!(
+                "{}: {}",
+                i,
+                e.unwrap().to_str().expect("Invalid Image Name")
+            );
+        }
+        let mut string = String::from("");
+        std::io::stdin().read_line(&mut string).unwrap();
+        let line = string.trim();
+        if line.chars().all(char::is_numeric) {
+            let p: u32 = line.parse().unwrap();
+            let file_chosen = glob(&input_paths).unwrap().nth(p as usize).unwrap().unwrap();
+            var = String::from(file_chosen
+                .to_str()
+                .unwrap()
+                .split('/')
+                .collect::<Vec<&str>>()[1]);
+            println!("You Chose: {}", var);
+        }
+    }
+    var
+}
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
-    let mut fname = "";
-    let mut pname = "";
+    let mut fname = String::from("");
+    let mut pname = String::from("");
     let mut fsize = 256;
     let mut psize = 16;
     let pixel_mode = true;
@@ -192,80 +221,19 @@ fn main() -> std::io::Result<()> {
             arg = Box::leak(args[i + 1].clone().into_boxed_str());
         }
         match e.as_str() {
-            "-p" => pname = arg,
-            "-f" => fname = arg,
+            "-p" => pname = String::from(arg),
+            "-f" => fname = String::from(arg),
             "-v" => qfactor = arg.parse::<f32>().expect("Invalid value for v"),
             "-fs" => fsize = arg.parse::<u32>().expect("Invalid value for fsize"),
             "-ps" => psize = arg.parse::<u32>().expect("Invalid value for psize"),
             _ => {}
         }
     }
-    // If you know how to make this better, please do
-    // I tried writing a function to encapsulate the behavior of this but I ran into too many problems
-    // and I do not know enough about rust to know how to properly write it, and rust analyzer was way too vague :(
-    let mut file_chosen: PathBuf;
-    while fname == "" {
-        let input_paths = "input/*";
-        let images = glob(&input_paths).unwrap();
-        println!("Please enter the number of the image you'd like to process:");
-        for (i, e) in images.enumerate() {
-            println!(
-                "{}: {}",
-                i,
-                e.unwrap().to_str().expect("Invalid Image Name")
-            );
-        }
-        let mut string = String::from("");
-        std::io::stdin().read_line(&mut string).unwrap();
-        let line = string.trim();
-        if line.chars().all(char::is_numeric) {
-            let p: u32 = line.parse().unwrap();
-            file_chosen = glob(&input_paths)
-                .unwrap()
-                .nth(p as usize)
-                .unwrap()
-                .unwrap();
-            fname = file_chosen
-                .to_str()
-                .unwrap()
-                .split('/')
-                .collect::<Vec<&str>>()[1];
-            println!("You Chose: {}", fname);
-        }
+    if fname == "" {
+        fname = input_assign("input");
     }
-    println!();
-    // If you know how to make this better, please do
-    // I tried writing a function to encapsulate the behavior of this but I ran into too many problems
-    // and I do not know enough about rust to know how to properly write it, and rust analyzer was way too vague :(
-    let mut file_chosen: PathBuf;
-    while pname == "" {
-        let input_paths = "palettes/*";
-        let images = glob(&input_paths).unwrap();
-        println!("Please enter the number of the image you'd like to process:");
-        for (i, e) in images.enumerate() {
-            println!(
-                "{}: {}",
-                i,
-                e.unwrap().to_str().expect("Invalid Image Name")
-            );
-        }
-        let mut string = String::from("");
-        std::io::stdin().read_line(&mut string).unwrap();
-        let line = string.trim();
-        if line.chars().all(char::is_numeric) {
-            let p: u32 = line.parse().unwrap();
-            file_chosen = glob(&input_paths)
-                .unwrap()
-                .nth(p as usize)
-                .unwrap()
-                .unwrap();
-            pname = file_chosen
-                .to_str()
-                .unwrap()
-                .split('/')
-                .collect::<Vec<&str>>()[1];
-            println!("You Chose: {}", fname);
-        }
+    if pname == "" {
+        pname = input_assign("palettes");
     }
     println!();
     println!(
@@ -275,8 +243,8 @@ fn main() -> std::io::Result<()> {
     println!();
     let now = Instant::now();
     if pixel_mode {
-        let mut palette = generate_pixel_palette(pname, psize);
-        let image = generate_image_pixel_mode(fname, pname, &mut palette, psize, fsize, qfactor);
+        let mut palette = generate_pixel_palette(&pname, psize);
+        let image = generate_image_pixel_mode(&fname, &pname, &mut palette, psize, fsize, qfactor);
         let save_name = format!(
             "output/{}-{}_p{}_f{}_v{:e}.{}",
             fname.split(".").collect::<Vec<&str>>()[0],
