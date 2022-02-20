@@ -11,7 +11,7 @@ Using this information, we can construct the mosaic by taking the pixels from it
 
 This can work with any set of images, it doesn't have to be emojis.
 
-![](output/Landscape-Color:emoji_p16_f256_v6.4e1.jpg)
+![](output/Landscape-Color-emoji_p16_f256_v6.4e1.jpg)
 
 ## To compile:
 `cargo build --release`
