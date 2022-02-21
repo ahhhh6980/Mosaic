@@ -38,15 +38,18 @@ struct Label {
 
 fn compute_average_color(img: &ImageBuffer<Rgba<u8>, Vec<u8>>, w: usize, h: usize) -> Array1<f32> {
     let mut avg = [0f32; 4];
+    // Sum the pixels in the image
     for (i, e) in img.iter().enumerate() {
         avg[i % 4] += *e as f32
     }
+    // Normalize the sum to 256
     for i in 0..4 {
         avg[i] /= h as f32 * w as f32;
     }
     Array1::from(avg.to_vec())
 }
 
+// This is based off of perceptual color, but it's results have been ok so far
 fn bad_color_distance(pixel_a: &Array1<f32>, pixel_b: &Array1<f32>, q: u64, qfactor: f32) -> u64 {
     let c1 = pixel_a / 256.0;
     let c2 = pixel_b / 256.0;
@@ -96,6 +99,8 @@ fn resize_dims((mut w, mut h): (usize, usize), max_size: u32) -> (usize, usize) 
     (w, h)
 }
 
+// Creates a Vec of the struct Label, which houses every
+//      single image in the palette, with its computed color
 fn generate_pixel_palette(pname: &str, max_size: u32) -> Vec<Label> {
     let (pw, ph) = resize_dims(get_palette_dimensions(&pname), max_size);
 
@@ -109,6 +114,7 @@ fn generate_pixel_palette(pname: &str, max_size: u32) -> Vec<Label> {
         };
         1
     ];
+
     if Path::new(&palette_path).is_dir() {
         let set_count: usize = read_dir(&palette_path).unwrap().count() as usize;
         palette = vec![
@@ -136,6 +142,7 @@ fn generate_pixel_palette(pname: &str, max_size: u32) -> Vec<Label> {
     palette
 }
 
+// Maps pixels to palette items
 fn generate_image_pixel_mode(
     fname: &str,
     pname: &str,
@@ -146,22 +153,33 @@ fn generate_image_pixel_mode(
 ) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let image_path = format!("input/{}", fname);
     let mut output = ImageBuffer::<Rgba<u8>, Vec<u8>>::new(1, 1);
+
     if Path::new(&image_path).is_file() {
         let image = image::open(&image_path).unwrap();
+        // Get dimensions of input image and palette items
         let (w, h) = resize_dims((image.width() as usize, image.height() as usize), imax);
         let (pw, ph) = resize_dims(get_palette_dimensions(&pname), pmax);
+        // Resize input image
         let image = image.resize(imax, imax, Lanczos3).into_rgba8();
         output = ImageBuffer::<Rgba<u8>, Vec<u8>>::new((pw * w) as u32, (ph * h) as u32);
         for y in 0..h {
             for x in 0..w {
                 let temp = (image[(x as u32, y as u32)].0).to_vec();
                 let pixel: Vec<f32> = temp.iter().map(|v| *v as f32).collect();
+                // Convert our pixel into an ndarray so we can do math with it
                 let pixel = Array1::<f32>::from(pixel);
+                // Find the closest item in the palette that matches the pixel
                 let (pimage, pcolor, pid) = find_closest_image(&pixel, palette, qfactor);
+                // Increment counter of found item, this is used for variance
+                //  if variance is set high, it will include that value in distance calc
                 palette[pid].count += 1;
+                // This part writes the pixels from the palette items to the output image
                 for oy in 0..ph {
                     for ox in 0..pw {
                         let mut ppixel = pimage[(ox as u32, oy as u32)];
+                        // If theres no transparency in the input, this
+                        //  replaces the transparency in the palette
+                        //  here with the palette items average value
                         if ppixel[3] < 128 {
                             let value: u16 = pcolor.iter().map(|v| *v as u16).sum();
                             ppixel[0] = (value / 4) as u8;
@@ -180,34 +198,48 @@ fn generate_image_pixel_mode(
 
 fn input_assign(dir: &str) -> String {
     let mut var = String::from("");
+    // Keep looping until we get sensible input
     while var == String::from("") {
+        // This is our path
         let input_paths = format!("{}/*", dir);
-        let images = glob(&input_paths).unwrap();
+        // Iterate over every item in folder
         println!("Please enter the number of the image you'd like to process:");
-        for (i, e) in images.enumerate() {
+        for (i, item) in glob(&input_paths).unwrap().enumerate() {
             println!(
                 "{}: {}",
                 i,
-                e.unwrap().to_str().expect("Invalid Image Name")
+                item.unwrap().to_str().expect("Invalid Image Name")
             );
         }
+        // Take in input from the user
         let mut string = String::from("");
         std::io::stdin().read_line(&mut string).unwrap();
-        let line = string.trim();
-        if line.chars().all(char::is_numeric) {
+
+        // Only parse the line if it contains numbers
+        if string.trim().chars().all(char::is_numeric) {
+            let line = string.trim();
             let p: u32 = line.parse().unwrap();
+            dbg!(glob(&input_paths).unwrap().count());
+            // Index into the chosen filepath
             let file_chosen = glob(&input_paths)
                 .unwrap()
                 .nth(p as usize)
                 .unwrap()
                 .unwrap();
+            println!("A");
+            // Trim the filepath to exclude dir
+            let mut e = '/';
+            if file_chosen.to_str().unwrap().contains(e) == false {
+                e = '\\';
+            }
             var = String::from(
                 file_chosen
                     .to_str()
                     .unwrap()
-                    .split('/')
+                    .split(e)
                     .collect::<Vec<&str>>()[1],
             );
+            println!("B");
             println!("You Chose: {}", var);
         }
     }
@@ -237,17 +269,18 @@ fn main() -> std::io::Result<()> {
     }
     if fname == "" {
         fname = input_assign("input");
+        println!();
     }
     println!();
     if pname == "" {
         pname = input_assign("palettes");
+        println!();
     }
-    println!();
+
     println!(
         "Processing: {}, with palette: {}, at img size: {}, and palette size: {}",
         &fname, &pname, &fsize, &psize
     );
-    println!();
     let now = Instant::now();
     if pixel_mode {
         let mut palette = generate_pixel_palette(&pname, psize);
