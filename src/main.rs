@@ -19,7 +19,7 @@ use glob::glob;
 use image::{imageops::FilterType::Lanczos3, ImageBuffer, Rgba};
 use ndarray::Array1;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::path::PathBuf;
+use std::path::{PathBuf, self};
 use std::time::Instant;
 use std::{cmp::max, env, fs::read_dir, path::Path};
 
@@ -219,27 +219,20 @@ fn input_assign(dir: &str) -> String {
         if string.trim().chars().all(char::is_numeric) {
             let line = string.trim();
             let p: u32 = line.parse().unwrap();
-            dbg!(glob(&input_paths).unwrap().count());
             // Index into the chosen filepath
             let file_chosen = glob(&input_paths)
                 .unwrap()
                 .nth(p as usize)
                 .unwrap()
                 .unwrap();
-            println!("A");
             // Trim the filepath to exclude dir
-            let mut e = '/';
-            if file_chosen.to_str().unwrap().contains(e) == false {
-                e = '\\';
-            }
             var = String::from(
                 file_chosen
                     .to_str()
                     .unwrap()
-                    .split(e)
+                    .split(path::MAIN_SEPARATOR)
                     .collect::<Vec<&str>>()[1],
             );
-            println!("B");
             println!("You Chose: {}", var);
         }
     }
