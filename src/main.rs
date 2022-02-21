@@ -19,7 +19,7 @@ use glob::glob;
 use image::{imageops::FilterType::Lanczos3, ImageBuffer, Rgba};
 use ndarray::Array1;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::path::{PathBuf, self};
+use std::path::{self, PathBuf};
 use std::time::Instant;
 use std::{cmp::max, env, fs::read_dir, path::Path};
 
@@ -127,16 +127,22 @@ fn generate_pixel_palette(pname: &str, max_size: u32) -> Vec<Label> {
             set_count
         ];
 
+        let mut tempfix = 0;
         let images_paths = format!("{}/*", &palette_path);
         for (i, item) in glob(&images_paths).expect("Error").enumerate() {
             let item_name = item.unwrap();
-            let image = image::open(&item_name)
-                .unwrap()
-                .resize(pw as u32, ph as u32, Lanczos3)
-                .into_rgba8();
-            palette[i].color = compute_average_color(&image, pw, ph);
-            palette[i].image = image;
-            palette[i].id = i;
+            if item_name.as_os_str().to_str().unwrap().contains("ini") == true {
+                tempfix += 1;
+            }
+            if item_name.as_os_str().to_str().unwrap().contains("ini") == false {
+                let image = image::open(&item_name)
+                    .unwrap()
+                    .resize(pw as u32, ph as u32, Lanczos3)
+                    .into_rgba8();
+                palette[i].color = compute_average_color(&image, pw, ph);
+                palette[i].image = image;
+                palette[i].id = i - tempfix;
+            }
         }
     }
     palette
