@@ -196,12 +196,18 @@ fn input_assign(dir: &str) -> String {
         let line = string.trim();
         if line.chars().all(char::is_numeric) {
             let p: u32 = line.parse().unwrap();
-            let file_chosen = glob(&input_paths).unwrap().nth(p as usize).unwrap().unwrap();
-            var = String::from(file_chosen
-                .to_str()
+            let file_chosen = glob(&input_paths)
                 .unwrap()
-                .split('/')
-                .collect::<Vec<&str>>()[1]);
+                .nth(p as usize)
+                .unwrap()
+                .unwrap();
+            var = String::from(
+                file_chosen
+                    .to_str()
+                    .unwrap()
+                    .split('/')
+                    .collect::<Vec<&str>>()[1],
+            );
             println!("You Chose: {}", var);
         }
     }
@@ -232,6 +238,7 @@ fn main() -> std::io::Result<()> {
     if fname == "" {
         fname = input_assign("input");
     }
+    println!();
     if pname == "" {
         pname = input_assign("palettes");
     }
