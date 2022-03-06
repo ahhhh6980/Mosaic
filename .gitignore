@@ -1,4 +1,6 @@
 target/
 palettes/test/
-Mosaic.zip
-test/
+palettes/lobster/
+binaries/
+prep.sh
+README_old.md
