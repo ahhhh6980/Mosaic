@@ -423,6 +423,7 @@ dependencies = [
  "clap",
  "image",
  "ndarray",
+ "num_cpus",
  "rayon",
  "thread",
 ]

@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "3.1.5", features = ["derive"] }
+num_cpus = "1.13.1"
 image = "0.24.0"
 ndarray = "0.15.4"
 rayon = "1.5.1"

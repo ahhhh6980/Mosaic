@@ -83,9 +83,7 @@ fn find_closest_image(
 
 fn get_palette_dimensions<P: AsRef<Path>>(pname: P) -> Result<(usize, usize), Box<dyn Error>> {
     let files = list_dir(&pname, FindType::File)?;
-    let image = image::open(&files[0])
-        .unwrap()
-        .into_rgba8();
+    let image = image::open(&files[0]).unwrap().into_rgba8();
     Ok((image.width() as usize, image.height() as usize))
 }
 
@@ -98,7 +96,10 @@ fn resize_dims((mut w, mut h): (usize, usize), max_size: u32) -> (usize, usize) 
 
 // Creates a Vec of the struct Label, which houses every
 //      single image in the palette, with its computed color
-fn generate_pixel_palette<P: AsRef<Path>>(pname: P, max_size: u32) -> Result<Vec<Label>, Box<dyn Error>> {
+fn generate_pixel_palette<P: AsRef<Path>>(
+    pname: P,
+    max_size: u32,
+) -> Result<Vec<Label>, Box<dyn Error>> {
     let (pw, ph) = resize_dims(get_palette_dimensions(&pname)?, max_size);
 
     let set_count: usize = read_dir(&pname).unwrap().count() as usize;
@@ -176,7 +177,6 @@ fn generate_image_pixel_mode<P: AsRef<Path>>(
     }
     Ok(output)
 }
-
 
 #[allow(dead_code)]
 enum FindType {
@@ -273,28 +273,43 @@ use clap::Parser;
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
-    #[clap(short='f', default_value="")]
+    #[clap(short = 't', default_value = "0")]
+    threads: usize,
+    #[clap(short = 'f', default_value = "")]
     fpath: PathBuf,
-    #[clap(short='p', default_value="")]
+    #[clap(short = 'p', default_value = "")]
     ppath: PathBuf,
-    #[clap(default_value="0")]
+    #[clap(default_value = "0")]
     psize: u32,
-    #[clap(default_value="0")]
+    #[clap(default_value = "0")]
     fsize: u32,
-    #[clap(short='q',default_value="-1")]
+    #[clap(short = 'q', default_value = "-1")]
     qfactor: i32,
-    #[clap(short='y', long)]
+    #[clap(short = 'y', long)]
     ask: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = Args::parse();
     args.ask = !(args.ask);
-    println!("{}", args.ask);
+
+    // Thread count
+    if args.threads == 0 {
+        args.threads = if args.ask {
+            prompt_number(Range { start: 1, end: num_cpus::get() as u32 }, "\nEnter the number of threads to use\nOnly choose more than a couple for very large fsize values\n(like fsize over 512 w/ psize over 32)\nChoose a value", ((num_cpus::get() as f32) * 0.3).ceil() as i32)? as usize
+        } else {
+            ((num_cpus::get() as f32) * 0.3).ceil() as usize
+        }
+    }
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(args.threads)
+        .build_global()
+        .unwrap();
+
     // File name
     if String::from(args.fpath.to_string_lossy()) == "" {
         args.fpath = if args.ask {
-            input_prompt("input", FindType::File, "Choose the input image")?
+            input_prompt("input", FindType::File, "\nChoose the input image")?
         } else {
             PathBuf::from(String::from("input/test.jpg"))
         }
@@ -302,6 +317,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let ps = args.fpath.file_name().unwrap().to_string_lossy();
     let fname = String::from(ps.split(".").collect::<Vec<&str>>()[0]);
     let ext = String::from(ps.split(".").collect::<Vec<&str>>()[1]);
+
     // Palette name
     if String::from(args.ppath.to_string_lossy()) == "" {
         args.ppath = if args.ask {
@@ -309,18 +325,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else {
             PathBuf::from(String::from("palettes/emoji"))
         }
-        
     }
     let ps = args.ppath.file_name().unwrap().to_string_lossy();
     let pname = String::from(ps.split(".").collect::<Vec<&str>>()[0]);
+
     // Palette size
     if args.psize == 0 {
         args.psize = if args.ask {
-            prompt_number(Range { start: 4, end: 128 }, "\nEnter a palette size", 16)?
+            prompt_number(
+                Range { start: 4, end: 128 },
+                "\nEnter a palette size\nChoose a value",
+                16,
+            )?
         } else {
             16
         }
     }
+
     // Image size
     let fmax = u32::MAX / args.psize;
     if args.fsize < args.psize || args.fsize > fmax || args.fsize == 0 {
@@ -330,35 +351,67 @@ fn main() -> Result<(), Box<dyn Error>> {
                     start: args.psize,
                     end: fmax,
                 },
-                "\nEnter a image size",
-                64
+                "\nEnter a image size\nChoose a value",
+                64,
             )?
-        } else { 64 }
-    }
-    if args.qfactor < 0 {
-        args.qfactor = if args.ask {
-            prompt_number(Range { start: 4, end: 128 }, "\nEnter a qfactor", 64)? as i32
-        } else { 0 }
+        } else {
+            64
+        }
     }
 
+    // Causes palette spread
+    if args.qfactor < 0 {
+        args.qfactor = if args.ask {
+            prompt_number(
+                Range { start: 4, end: 128 },
+                "\nEnter a qfactor\nChoose a value",
+                64,
+            )? as i32
+        } else {
+            0
+        }
+    }
+
+    // Output name
     let stdin = io::stdin();
     let mut buffer = String::new();
     println!("\nPlease enter the output name");
     stdin.read_line(&mut buffer)?;
     let outname = buffer.trim();
 
-    let temp: Vec<&str> = args.ppath.as_os_str().to_str().unwrap().split(path::MAIN_SEPARATOR).collect();
-    let name = format!("output/{}_{}_f{}-p{}.{}", outname, temp[temp.len()-1], args.fsize, args.psize, ext);
+    let temp: Vec<&str> = args
+        .ppath
+        .as_os_str()
+        .to_str()
+        .unwrap()
+        .split(path::MAIN_SEPARATOR)
+        .collect();
+    let name = format!(
+        "output/{}_{}_f{}-p{}.{}",
+        outname,
+        temp[temp.len() - 1],
+        args.fsize,
+        args.psize,
+        ext
+    );
 
     println!(
         "Processing: {}.{}, with palette: {}, at img size: {}, and palette size: {}",
         &fname, &ext, &pname, &args.fsize, &args.psize
     );
+
     let pixel_mode = true;
     let now = Instant::now();
     if pixel_mode {
         let mut palette = generate_pixel_palette(&args.ppath, args.psize)?;
-        let image = generate_image_pixel_mode(&args.fpath, &args.ppath, &mut palette, args.psize, args.fsize, args.qfactor as f32)?;
+        let image = generate_image_pixel_mode(
+            &args.fpath,
+            &args.ppath,
+            &mut palette,
+            args.psize,
+            args.fsize,
+            args.qfactor as f32,
+        )?;
         image.save(name)?;
     } else {
         // let palette = generate_mosaic_palette(pname, psize);
