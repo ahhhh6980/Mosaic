@@ -23,7 +23,7 @@ This can work with any set of images, it doesn't have to be emojis.
 
 ### For terminal argument input:
 - `./mosaic --help`
-=======
+
 command line args:
 `./mosaic -f Landscape-Color.png -p emoji -fs 256 -ps 16 -v 64.0`
 - Specify *file.png* scaled to a max size of 256, using the palette "emoji" scaled to 16x16, with a "variance" of 1/64[^1][^2]
