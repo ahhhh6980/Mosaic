@@ -18,7 +18,6 @@ This can work with any set of images, it doesn't have to be emojis.
 
 ## To use:
 
-<<<<<<< HEAD
 ### For prompts:
 - `./mosaic`
 
@@ -30,7 +29,6 @@ command line args:
 - Specify *file.png* scaled to a max size of 256, using the palette "emoji" scaled to 16x16, with a "variance" of 1/64[^1][^2]
 
 Pass in the extension for the file name!
->>>>>>> ec5f5f53f8659824e65c37990167cca904d2a74c
 
 ## How Do You Use Other Images?
 1 **Find a collection of images**
