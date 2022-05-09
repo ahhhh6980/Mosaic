@@ -12,3 +12,13 @@ image = "0.24.0"
 ndarray = "0.15.4"
 rayon = "1.5.1"
 thread = "0.1.0"
+colortypes = "0.3.3"
+indicatif = "0.16.2"
+rustdct = "0.7.0"
+transpose = "0.2.1"
+rustfft = "6.0.1"
+
+[profile.release]
+opt-level = 2 # fast and small wasm
+lto = "fat"
+codegen-units = 1
