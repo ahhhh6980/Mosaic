@@ -1,182 +1,19 @@
-// Mosaic
-// Main File
-// (C) 2022 by Jacob (ahhhh6980@gmail.com)
+#![allow(incomplete_features)]
+#![feature(adt_const_params)]
+use std::{
+    error::Error,
+    f64::consts::PI,
+    fs::read_dir,
+    io::{self, Write},
+    ops::Range,
+    path::{self, Path, PathBuf},
+    time::Instant,
+};
 
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-use image::{imageops::FilterType::Lanczos3, ImageBuffer, Rgba};
-use ndarray::Array1;
+use colortypes::{CIELcha, Color, Image, Rgba, SRGB};
+use image::{imageops::FilterType::Lanczos3, ImageBuffer};
+use indicatif::ProgressBar;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::error::Error;
-use std::fs;
-use std::io::{self, Write};
-use std::ops::Range;
-use std::path::{self, PathBuf};
-use std::time::Instant;
-use std::{cmp::max, fs::read_dir, path::Path};
-
-#[derive(Debug, Clone)]
-struct Label {
-    color: Array1<f32>,
-    image: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    count: u64,
-    id: usize,
-}
-// #[derive(Debug, Clone)]
-// struct LabelMosaic {
-//     color: Array3<f32>,
-//     image: ImageBuffer<Rgba<u8>, Vec<u8>>,
-// }
-
-fn compute_average_color(img: &ImageBuffer<Rgba<u8>, Vec<u8>>, w: usize, h: usize) -> Array1<f32> {
-    let mut avg = [0f32; 4];
-    // Sum the pixels in the image
-    for (i, e) in img.iter().enumerate() {
-        avg[i % 4] += *e as f32
-    }
-    // Normalize the sum to 256
-    for i in 0..4 {
-        avg[i] /= h as f32 * w as f32;
-    }
-    Array1::from(avg.to_vec())
-}
-
-// This is based off of perceptual color, but it's results have been ok so far
-fn bad_color_distance(pixel_a: &Array1<f32>, pixel_b: &Array1<f32>, q: u64, qfactor: f32) -> u64 {
-    let c1 = pixel_a / 256.0;
-    let c2 = pixel_b / 256.0;
-    let dc = &c2 - &c1;
-    let r = (c1[0] + c2[0]) / 2.0;
-    let dr = (2.0 + (r / 256.0)) * dc[0] * dc[0];
-    let dg = 4.0 * dc[1] * dc[1];
-    let db = (2.0 + ((255.0 - r) / 256.0)) * dc[2] * dc[2];
-    if qfactor > 0.0 {
-        ((dr + dg + db) * 1024.0 + ((q as f32) / qfactor)) as u64
-    } else {
-        ((dr + dg + db) * 1024.0) as u64
-    }
-}
-
-fn find_closest_image(
-    pixel: &Array1<f32>,
-    palette: &Vec<Label>,
-    qfactor: f32,
-) -> (ImageBuffer<Rgba<u8>, Vec<u8>>, Array1<f32>, usize) {
-    //let label = palette.par_iter().min_by_key(|x| bad_color_distance(&pixel, &x.color, &x.count)).unwrap();
-    let label = palette
-        .par_iter()
-        .min_by_key(|x| bad_color_distance(&pixel, &x.color, x.count, qfactor))
-        .unwrap();
-    (label.image.clone(), label.color.clone(), label.id.clone())
-}
-
-fn get_palette_dimensions<P: AsRef<Path>>(pname: P) -> Result<(usize, usize), Box<dyn Error>> {
-    let files = list_dir(&pname, FindType::File)?;
-    let image = image::open(&files[0]).unwrap().into_rgba8();
-    Ok((image.width() as usize, image.height() as usize))
-}
-
-fn resize_dims((mut w, mut h): (usize, usize), max_size: u32) -> (usize, usize) {
-    let max_dimension = max(w, h) as f32;
-    w = (((w as f32) / max_dimension) * (max_size as f32)) as usize;
-    h = (((h as f32) / max_dimension) * (max_size as f32)) as usize;
-    (w, h)
-}
-
-// Creates a Vec of the struct Label, which houses every
-//      single image in the palette, with its computed color
-fn generate_pixel_palette<P: AsRef<Path>>(
-    pname: P,
-    max_size: u32,
-) -> Result<Vec<Label>, Box<dyn Error>> {
-    let (pw, ph) = resize_dims(get_palette_dimensions(&pname)?, max_size);
-
-    let set_count: usize = read_dir(&pname).unwrap().count() as usize;
-    let mut palette = vec![
-        Label {
-            color: Array1::<f32>::zeros(4),
-            image: ImageBuffer::<Rgba<u8>, Vec<u8>>::new(pw as u32, ph as u32),
-            count: 0,
-            id: 0
-        };
-        set_count
-    ];
-
-    let mut tempfix = 0;
-    for (i, item) in list_dir(&pname, FindType::File)?.iter().enumerate() {
-        if item.as_os_str().to_str().unwrap().contains("ini") == true {
-            tempfix += 1;
-        } else {
-            let image = image::open(&item)?
-                .resize(pw as u32, ph as u32, Lanczos3)
-                .into_rgba8();
-            palette[i].color = compute_average_color(&image, pw, ph);
-            palette[i].image = image;
-            palette[i].id = i - tempfix;
-        }
-    }
-    Ok(palette)
-}
-
-// Maps pixels to palette items
-fn generate_image_pixel_mode<P: AsRef<Path>>(
-    image_path: P,
-    pname: P,
-    palette: &mut Vec<Label>,
-    pmax: u32,
-    imax: u32,
-    qfactor: f32,
-) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, Box<dyn Error>> {
-    let image = image::open(&image_path).unwrap();
-    // Get dimensions of input image and palette items
-    let (w, h) = resize_dims((image.width() as usize, image.height() as usize), imax);
-    let (pw, ph) = resize_dims(get_palette_dimensions(&pname)?, pmax);
-    // Resize input image
-    let image = image.resize(imax, imax, Lanczos3).into_rgba8();
-    let mut output = ImageBuffer::<Rgba<u8>, Vec<u8>>::new((pw * w) as u32, (ph * h) as u32);
-    for y in 0..h {
-        for x in 0..w {
-            let temp = (image[(x as u32, y as u32)].0).to_vec();
-            let pixel: Vec<f32> = temp.iter().map(|v| *v as f32).collect();
-            // Convert our pixel into an ndarray so we can do math with it
-            let pixel = Array1::<f32>::from(pixel);
-            // Find the closest item in the palette that matches the pixel
-            let (pimage, pcolor, pid) = find_closest_image(&pixel, palette, qfactor);
-            // Increment counter of found item, this is used for variance
-            //  if variance is set high, it will include that value in distance calc
-            palette[pid].count += 1;
-            // This part writes the pixels from the palette items to the output image
-            for oy in 0..ph {
-                for ox in 0..pw {
-                    let mut ppixel = pimage[(ox as u32, oy as u32)];
-                    // If theres no transparency in the input, this
-                    //  replaces the transparency in the palette
-                    //  here with the palette items average value
-                    if ppixel[3] < 128 {
-                        let value: u16 = pcolor.iter().map(|v| *v as u16).sum();
-                        ppixel[0] = (value / 4) as u8;
-                        ppixel[1] = (value / 4) as u8;
-                        ppixel[2] = (value / 4) as u8;
-                    }
-                    ppixel[3] = pixel[3] as u8;
-                    output.put_pixel((x * pw + ox) as u32, (y * ph + oy) as u32, ppixel);
-                }
-            }
-        }
-    }
-    Ok(output)
-}
 
 #[allow(dead_code)]
 enum FindType {
@@ -186,7 +23,7 @@ enum FindType {
 
 fn list_dir<P: AsRef<Path>>(dir: P, find_dirs: FindType) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let mut files = Vec::<PathBuf>::new();
-    for item in fs::read_dir(dir)? {
+    for item in read_dir(dir)? {
         let item = item?;
         match &find_dirs {
             FindType::File => {
@@ -203,6 +40,324 @@ fn list_dir<P: AsRef<Path>>(dir: P, find_dirs: FindType) -> Result<Vec<PathBuf>,
     }
     Ok(files)
 }
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+struct Label {
+    color: Color<Rgba, SRGB>,
+    image: Image<Rgba, SRGB>,
+    o: Image<Rgba, SRGB>,
+    m: Image<Rgba, SRGB>,
+    count: u64,
+    id: usize,
+}
+
+#[inline(always)]
+fn get_palette_dimensions<P: AsRef<Path>>(pname: P) -> Result<(usize, usize), Box<dyn Error>> {
+    let files = list_dir(&pname, FindType::File)?;
+    let image = image::open(&files[0]).unwrap().into_rgba8();
+    Ok((image.width() as usize, image.height() as usize))
+}
+
+#[inline(always)]
+fn resize_dims((mut w, mut h): (usize, usize), max_size: u32) -> (usize, usize) {
+    let max_dimension = w.max(h) as f32;
+    w = (((w as f32) / max_dimension) * (max_size as f32)) as usize;
+    h = (((h as f32) / max_dimension) * (max_size as f32)) as usize;
+    (w, h)
+}
+
+#[inline(always)]
+fn dynamic_to_image(
+    input: &ImageBuffer<image::Rgba<u8>, Vec<u8>>,
+    size: (usize, usize),
+) -> Image<Rgba, SRGB> {
+    let image = input.to_vec();
+    let mut new_img = vec![Rgba::new([0.0; 4]); 0];
+    for slice in image.chunks_exact(4) {
+        if let [r, g, b, a] = *slice {
+            new_img.push(Rgba::new::<SRGB>([
+                r as f64 / 256.0,
+                g as f64 / 256.0,
+                b as f64 / 256.0,
+                a as f64 / 256.0,
+            ]))
+        };
+    }
+    Image::from_vec(size, new_img)
+}
+
+#[inline(always)]
+fn vec_f64_to_image(input: &[f64], size: (usize, usize)) -> Image<Rgba, SRGB> {
+    let mut new_img = vec![Rgba::new([0.0; 4]); 0];
+    for slice in input.chunks_exact(4) {
+        if let [r, g, b, a] = *slice {
+            new_img.push(Rgba::new::<SRGB>([
+                r as f64 / 256.0,
+                g as f64 / 256.0,
+                b as f64 / 256.0,
+                a as f64 / 256.0,
+            ]))
+        };
+    }
+    Image::from_vec(size, new_img)
+}
+
+// Creates a Vec of the struct Label, which houses every
+//      single image in the palette, with its computed color
+fn generate_pixel_palette<P: AsRef<Path>>(
+    pname: P,
+    max_size: u32,
+) -> Result<Vec<Label>, Box<dyn Error>> {
+    let (pw, ph) = resize_dims(get_palette_dimensions(&pname)?, max_size);
+
+    let set_count: usize = read_dir(&pname).unwrap().count() as usize;
+    let mut palette = vec![
+        Label {
+            color: Rgba::new([0.0; 4]),
+            image: Image::new((pw, ph)),
+            o: Image::new((pw, ph)),
+            m: Image::new((pw, ph)),
+            count: 0,
+            id: 0
+        };
+        set_count
+    ];
+
+    let mut tempfix = 0;
+    let files = list_dir(&pname, FindType::File)?;
+    let c = files.len();
+    let bar = ProgressBar::new(c as u64);
+
+    println!("Assembling palette in memory");
+
+    for (i, item) in files.iter().enumerate() {
+        bar.inc(1);
+        if item.as_os_str().to_str().unwrap().contains("ini") {
+            tempfix += 1;
+        } else {
+            let image = image::open(&item)?
+                .resize(pw as u32, ph as u32, Lanczos3)
+                .into_rgba8();
+            palette[i].image = dynamic_to_image(&image, (pw, ph));
+            palette[i].o = get_orientation(&palette[i].image);
+            palette[i].o = get_edges_simple(&palette[i].image);
+            palette[i].color = palette[i].image.mean();
+            palette[i].id = i - tempfix;
+        }
+    }
+    bar.finish();
+    Ok(palette)
+}
+
+fn get_edges_simple(window: &Image<Rgba, SRGB>) -> Image<Rgba, SRGB> {
+    let mut m = window.clone();
+    let (w, h) = (window.width(), window.height());
+    for y in 0..h {
+        for x in 0..w {
+            m.put_pixel(
+                (x, y),
+                Rgba::new([0f64; 4])
+                    - if x > 0 {
+                        window.get_pixel((x - 1, y))
+                    } else {
+                        window.get_pixel((x, y))
+                    }
+                    - if x < w - 1 {
+                        window.get_pixel((x + 1, y))
+                    } else {
+                        window.get_pixel((x, y))
+                    }
+                    - if y > 0 {
+                        window.get_pixel((x, y - 1))
+                    } else {
+                        window.get_pixel((x, y))
+                    }
+                    - if y < h - 1 {
+                        window.get_pixel((x, y + 1))
+                    } else {
+                        window.get_pixel((x, y))
+                    }
+                    + (m.get_pixel((x, y)) * 4.0),
+            );
+        }
+    }
+    m
+}
+
+fn get_orientation(window: &Image<Rgba, SRGB>) -> Image<Rgba, SRGB> {
+    let mut o = window.clone();
+    let (w, h) = (window.width(), window.height());
+    for y in 0..h {
+        for x in 0..w {
+            o.put_pixel(
+                (x, y),
+                Rgba::new([1.0, 1.0, 1.0, 0.0])
+                    - (((if y < h - 1 {
+                        window.get_pixel((x, y + 1))
+                    } else {
+                        window.get_pixel((x, y))
+                    } - if y > 0 {
+                        window.get_pixel((x, y - 1))
+                    } else {
+                        window.get_pixel((x, y))
+                    })
+                    .atan2_color(
+                        if x < w - 1 {
+                            window.get_pixel((x + 1, y))
+                        } else {
+                            window.get_pixel((x, y))
+                        } - if x > 0 {
+                            window.get_pixel((x - 1, y))
+                        } else {
+                            window.get_pixel((x, y))
+                        },
+                    )) / (PI / 2.0)),
+            );
+        }
+    }
+    o
+}
+
+use colortypes::{
+    impl_colorspace, impl_conversion, ColorGamut, ColorType, FromColorType, Rgba as CRgba,
+};
+impl_colorspace!(Drgba<SRGB>);
+impl_conversion!(CRgba, Drgba, |color| { color.to_arr().0 });
+
+fn find_closest_image<'a>(
+    window: &'a Image<Rgba, SRGB>,
+    palette: &'a Vec<Label>,
+    scale: f32,
+) -> &'a Label {
+    let self_o = get_orientation(window);
+    let self_m = get_edges_simple(window);
+
+    let (w, h) = window.size;
+    let c = Complex::new((w / 2) as f32, (h / 2) as f32);
+    let mut w_inner = Image::<Rgba, SRGB>::new_with((w, h), Rgba::new([1.0, 1.0, 1.0, 1.0]));
+    let mut w_outer = Image::<Rgba, SRGB>::new_with((w, h), Rgba::new([1.0, 1.0, 1.0, 1.0]));
+
+    for (i, (inn, out)) in w_outer
+        .pixels_mut()
+        .iter_mut()
+        .zip(w_inner.pixels_mut().iter_mut())
+        .enumerate()
+    {
+        let x = i % w;
+        let y = i / w;
+        let p = Complex::new(x as f32, y as f32);
+        let d = (c - p).norm().abs();
+        *inn *= (d) as f64;
+        *out *= ((w as f32).hypot(h as f32) - d) as f64;
+    }
+
+    let self_o = self_o * w_inner.clone();
+    let self_m = self_m * w_inner.clone();
+
+    let scaled_window = window.clone() * w_outer.clone();
+
+    palette
+        .par_iter()
+        .max_by_key(|x| {
+            let metric_o = self_o.ssim_in_space::<Drgba>((*x).o.clone() * w_inner.clone());
+            let metric_m = self_m.ssim_in_space::<Drgba>((*x).m.clone() * w_inner.clone());
+
+            let ssim = scaled_window.ssim((*x).image.clone() * w_outer.clone());
+
+            let cov_in = window.covariance_in_space::<CIELcha>(&((*x).image));
+
+            (((metric_o.0 * metric_m.0 + ssim.0 * ssim.0)
+                * (metric_m.1 * metric_o.1).sqrt()
+                * (metric_m.2 * metric_o.2).sqrt())
+            .powf(scale as f64)
+                * (ssim.0 * ssim.1 * ssim.2).powf(1.0 / scale as f64))
+            .abs()
+            .to_bits()
+                + (1.0 - cov_in.0).abs().to_bits()
+        })
+        .unwrap()
+}
+
+// Maps pixels to palette items
+fn generate_image_pixel_mode<P: AsRef<Path>>(
+    image_path: P,
+    pname: P,
+    palette: &mut Vec<Label>,
+    pmax: u32,
+    imax: u32,
+) -> Result<ImageBuffer<image::Rgba<u8>, Vec<u8>>, Box<dyn Error>> {
+    let image = image::open(&image_path).unwrap();
+    // Get dimensions of input image and palette items
+    let (w, h) = resize_dims((image.width() as usize, image.height() as usize), imax);
+    let (pw, ph) = resize_dims(get_palette_dimensions(&pname)?, pmax);
+    let scale = pw as f32 / w as f32;
+    // Resize input image
+    let image = image.resize(imax, imax, Lanczos3).into_rgba8();
+    let image = dynamic_to_image(&image, (imax as usize, imax as usize));
+    let output = ImageBuffer::<image::Rgba<u8>, Vec<u8>>::new((pw * w) as u32, (ph * h) as u32);
+    let mut output = dynamic_to_image(&output, (pw * w, ph * h));
+    let y_r = (((h - ph + 1) as f32 / ph as f32).ceil() as usize);
+    let x_r = (((w - pw + 1) as f32 / pw as f32).ceil() as usize);
+    let bar = ProgressBar::new((x_r * y_r) as u64);
+
+    println!("Computing Mosaic...");
+
+    for y in 0..y_r {
+        for x in 0..x_r {
+            bar.inc(1);
+            let window = image.crop((x * pw, y * ph), (pw, ph));
+            let window_avg = window.mean();
+            // Find the closest item in the palette that matches the pixel
+            let pimage = &find_closest_image(&window, palette, scale).image;
+
+            // This part writes the pixels from the palette items to the output image
+            for oy in 0..ph * ph {
+                for ox in 0..pw * pw {
+                    let mut px = pimage.get_pixel((ox / pw, oy / ph));
+                    if px.3 < 0.5 {
+                        let t = (window_avg.0 + window_avg.1 + window_avg.2) / 3.0;
+                        px = Color::new([t; 4]);
+                    }
+                    px.3 = window_avg.3;
+                    output.put_pixel((x * (pw * pw) + ox, y * (ph * ph) + oy), px);
+                }
+            }
+        }
+    }
+    bar.finish();
+    let dat = output.to_vec().iter().map(|x| (*x * 256.0) as u8).collect();
+    Ok(
+        ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw((pw * w) as u32, (ph * h) as u32, dat)
+            .unwrap(),
+    )
+}
+
+// #[allow(dead_code)]
+// enum FindType {
+//     File,
+//     Dir,
+// }
+
+// fn list_dir<P: AsRef<Path>>(dir: P, find_dirs: FindType) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+//     let mut files = Vec::<PathBuf>::new();
+//     for item in fs::read_dir(dir)? {
+//         let item = item?;
+//         match &find_dirs {
+//             FindType::File => {
+//                 if item.file_type()?.is_file() {
+//                     files.push(item.path());
+//                 }
+//             }
+//             FindType::Dir => {
+//                 if item.file_type()?.is_dir() {
+//                     files.push(item.path());
+//                 }
+//             }
+//         }
+//     }
+//     Ok(files)
+// }
 
 fn prompt_number(bounds: Range<u32>, message: &str, def: i32) -> Result<u32, Box<dyn Error>> {
     let stdin = io::stdin();
@@ -270,6 +425,7 @@ fn input_prompt<P: AsRef<Path>>(
     Ok((&files[prompt_number(bound, "", -1)? as usize]).clone())
 }
 use clap::Parser;
+use rustdct::num_complex::Complex;
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
@@ -283,8 +439,7 @@ pub struct Args {
     psize: u32,
     #[clap(default_value = "0")]
     fsize: u32,
-    #[clap(short = 'q', default_value = "-1")]
-    qfactor: i32,
+
     #[clap(short = 'y', long)]
     ask: bool,
 }
@@ -296,7 +451,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Thread count
     if args.threads == 0 {
         args.threads = if args.ask {
-            prompt_number(Range { start: 1, end: num_cpus::get() as u32 }, "\nEnter the number of threads to use\nOnly choose more than a couple for very large fsize values\n(like fsize over 512 w/ psize over 32)\nChoose a value", ((num_cpus::get() as f32) * 0.3).ceil() as i32)? as usize
+            prompt_number(
+                Range {
+                    start: 1,
+                    end: num_cpus::get() as u32,
+                },
+                "\nEnter the number of threads to use\nChoose a value",
+                ((num_cpus::get() as f32) * 0.3).ceil() as i32,
+            )? as usize
         } else {
             ((num_cpus::get() as f32) * 0.3).ceil() as usize
         }
@@ -352,23 +514,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                     end: fmax,
                 },
                 "\nEnter a image size\nChoose a value",
-                64,
+                (8192 / args.psize) as i32,
             )?
         } else {
-            64
-        }
-    }
-
-    // Causes palette spread
-    if args.qfactor < 0 {
-        args.qfactor = if args.ask {
-            prompt_number(
-                Range { start: 4, end: 128 },
-                "\nEnter a qfactor\nChoose a value",
-                64,
-            )? as i32
-        } else {
-            0
+            8192 / args.psize
         }
     }
 
@@ -386,18 +535,36 @@ fn main() -> Result<(), Box<dyn Error>> {
         .unwrap()
         .split(path::MAIN_SEPARATOR)
         .collect();
-    let name = format!(
-        "output/{}_{}_f{}-p{}.{}",
+
+    let mut name = format!(
+        "output/{}_{}_f{}-p{}_{i}.{ext}",
         outname,
         temp[temp.len() - 1],
         args.fsize,
         args.psize,
-        ext
+        ext = ext,
+        i = 0
     );
 
+    let mut i = 1;
+    let mut p = Path::new(&name);
+    while p.exists() {
+        name = format!(
+            "output/{}_{}_f{}-p{}_{i}.{ext}",
+            outname,
+            temp[temp.len() - 1],
+            args.fsize,
+            args.psize,
+            i = i,
+            ext = ext,
+        );
+        i += 1;
+        p = Path::new(&name);
+    }
+
     println!(
-        "Processing: {}.{}, with palette: {}, at img size: {}, and palette size: {}",
-        &fname, &ext, &pname, &args.fsize, &args.psize
+        "Processing: {}.{} to {}, with palette: {}, at img size: {}, and palette size: {}",
+        &fname, &ext, &name, &pname, &args.fsize, &args.psize
     );
 
     let pixel_mode = true;
@@ -410,7 +577,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             &mut palette,
             args.psize,
             args.fsize,
-            args.qfactor as f32,
         )?;
         image.save(name)?;
     } else {
